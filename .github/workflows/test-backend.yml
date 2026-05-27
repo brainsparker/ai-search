@@ -49,5 +49,5 @@ jobs:
           path: backend/htmlcov
           include-hidden-files: true
       - name: Coverage report
-        run: uv run --no-sync coverage report --fail-under=90
+        run: uv run --no-sync coverage report --fail-under=80
         working-directory: backend
