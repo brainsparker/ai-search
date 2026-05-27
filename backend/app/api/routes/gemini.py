@@ -97,7 +97,7 @@ async def poll_deep_research(
 ) -> Any:
     """Poll for deep research job status and results.
 
-    Retrieves the current status and any available outputs from a running
+    Retrieves the current status and any available timeline steps from a running
     research job. The last_event_id parameter enables reconnection after
     network interruption, allowing clients to resume from where they left off.
 
@@ -108,7 +108,7 @@ async def poll_deep_research(
         last_event_id: Optional ID of last received event for reconnection.
 
     Returns:
-        GeminiDeepResearchResultResponse with current status and outputs.
+        GeminiDeepResearchResultResponse with current status and steps.
 
     Raises:
         GeminiAPIError: If the interaction is not found or polling fails.

@@ -11,11 +11,66 @@ Usage:
     results = await service.search("python web scraping")
 """
 
-from typing import Any
-
-from tavily import AsyncTavilyClient  # type: ignore[import-untyped]
+from importlib import import_module
+from typing import Any, Protocol
 
 from app.core.config import settings
+
+
+class _AsyncTavilyClientProtocol(Protocol):
+    """Protocol for the untyped tavily-python async client methods we use."""
+
+    async def search(
+        self,
+        *,
+        query: str,
+        search_depth: str,
+        topic: str,
+        max_results: int,
+        include_images: bool,
+        include_image_descriptions: bool,
+        include_answer: bool,
+        include_raw_content: bool,
+        include_domains: list[str] | None,
+        exclude_domains: list[str] | None,
+        timeout: int,
+    ) -> dict[str, Any]: ...
+
+    async def extract(
+        self,
+        *,
+        urls: str | list[str],
+        timeout: int,
+    ) -> dict[str, Any]: ...
+
+    async def crawl(
+        self,
+        *,
+        url: str,
+        max_depth: int,
+        max_breadth: int,
+        limit: int,
+        instructions: str | None,
+        select_paths: list[str] | None,
+        select_domains: list[str] | None,
+        timeout: int,
+    ) -> dict[str, Any]: ...
+
+    async def map(
+        self,
+        *,
+        url: str,
+        max_depth: int,
+        max_breadth: int,
+        limit: int,
+        instructions: str | None,
+        select_paths: list[str] | None,
+        select_domains: list[str] | None,
+        timeout: int,
+    ) -> dict[str, Any]: ...
+
+
+AsyncTavilyClient: Any = import_module("tavily").AsyncTavilyClient
 
 
 class TavilyService:
@@ -60,7 +115,7 @@ class TavilyService:
         self._timeout: int = tavily_settings.timeout
 
         # Initialize the async client
-        self._client: AsyncTavilyClient = AsyncTavilyClient(
+        self._client: _AsyncTavilyClientProtocol = AsyncTavilyClient(
             api_key=tavily_settings.api_key,
             proxies=proxies,
         )

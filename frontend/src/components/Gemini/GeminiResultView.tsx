@@ -4,7 +4,7 @@ import Markdown from "react-markdown"
 
 import type {
   GeminiDeepResearchResultResponse,
-  GeminiOutput,
+  GeminiStep,
 } from "@/client/types.gen"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -25,29 +25,27 @@ interface GeminiResultViewProps {
   interactionId: string
 }
 
-// Extract main content from outputs
-function extractContent(outputs: GeminiOutput[] | undefined): string {
-  if (!outputs || outputs.length === 0) {
+// Extract main content from timeline steps
+function extractContent(steps: GeminiStep[] | undefined): string {
+  if (!steps || steps.length === 0) {
     return ""
   }
 
-  return outputs
-    .filter((output) => output.content)
-    .map((output) => output.content)
+  return steps
+    .filter((step) => step.content)
+    .map((step) => step.content)
     .join("\n\n")
 }
 
-// Extract thinking summaries from outputs
-function extractThinkingSummaries(
-  outputs: GeminiOutput[] | undefined,
-): string[] {
-  if (!outputs || outputs.length === 0) {
+// Extract thinking summaries from timeline steps
+function extractThinkingSummaries(steps: GeminiStep[] | undefined): string[] {
+  if (!steps || steps.length === 0) {
     return []
   }
 
-  return outputs
-    .filter((output) => output.thinking_summary)
-    .map((output) => output.thinking_summary as string)
+  return steps
+    .filter((step) => step.thinking_summary)
+    .map((step) => step.thinking_summary as string)
 }
 
 export function GeminiResultView({
@@ -58,8 +56,8 @@ export function GeminiResultView({
   const [thinkingOpen, setThinkingOpen] = useState(false)
   const saveToItems = useSaveToItems()
 
-  const content = extractContent(response.outputs)
-  const thinkingSummaries = extractThinkingSummaries(response.outputs)
+  const content = extractContent(response.steps)
+  const thinkingSummaries = extractThinkingSummaries(response.steps)
   const usage = response.usage
 
   const handleSave = () => {

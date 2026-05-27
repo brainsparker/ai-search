@@ -291,8 +291,8 @@ export type GeminiDeepResearchRequest = {
  *
  * Response schema for Gemini deep research polling results.
  *
- * Contains the current status and any available results from polling.
- * When status is COMPLETED, outputs and usage will be populated.
+ * Contains the current status and any available timeline steps from polling.
+ * When status is COMPLETED, steps and usage will be populated.
  */
 export type GeminiDeepResearchResultResponse = {
     /**
@@ -300,11 +300,11 @@ export type GeminiDeepResearchResultResponse = {
      */
     status: GeminiInteractionStatus;
     /**
-     * Outputs
+     * Steps
      *
-     * List of output segments from the research
+     * Chronological timeline steps from the research interaction
      */
-    outputs?: Array<GeminiOutput>;
+    steps?: Array<GeminiStep>;
     /**
      * Token usage information (available on completion)
      */
@@ -312,7 +312,7 @@ export type GeminiDeepResearchResultResponse = {
     /**
      * Completed At
      *
-     * Timestamp when the job completed (if applicable)
+     * Timestamp when the job completed or was last updated
      */
     completed_at?: string | null;
     /**
@@ -360,36 +360,60 @@ export type GeminiDeltaType = 'text' | 'tool_call' | 'status';
  * PENDING: Job submitted but not yet started processing.
  * IN_PROGRESS: Job is actively being processed.
  * COMPLETED: Job finished successfully with results available.
+ * REQUIRES_ACTION: Job is waiting for an external action/tool result.
  * FAILED: Job encountered an error and could not complete.
  * CANCELLED: Job was cancelled before completion.
+ * INCOMPLETE: Job stopped before producing a complete result.
  */
-export type GeminiInteractionStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'cancelled';
+export type GeminiInteractionStatus = 'pending' | 'in_progress' | 'completed' | 'requires_action' | 'failed' | 'cancelled' | 'incomplete';
 
 /**
- * GeminiOutput
+ * GeminiStep
  *
- * Individual output segment from Gemini deep research response.
+ * Timeline step from Gemini deep research responses.
  *
- * Represents a content segment which may include text, thinking summaries,
- * or tool call results.
+ * The Interactions API revision 2026-05-20 returns a chronological `steps`
+ * timeline instead of the legacy flat `outputs` array. Each step may be a
+ * model message, thinking summary, tool call, tool result, or status update.
+ * The backend normalizes nested Gemini content blocks into `content` and
+ * `thinking_summary` so the frontend can render a stable shape while still
+ * preserving unknown step fields via `extra="allow"`.
  */
-export type GeminiOutput = {
+export type GeminiStep = {
+    /**
+     * Step Id
+     *
+     * Unique identifier for this timeline step, if provided
+     */
+    step_id?: string | null;
+    /**
+     * Step Type
+     *
+     * Type of timeline step, such as message, thought, or tool call
+     */
+    step_type?: string | null;
+    /**
+     * Status
+     *
+     * Step-level status, if provided by Gemini
+     */
+    status?: string | null;
     /**
      * Content
      *
-     * Text content of this output segment
+     * Text content extracted from this timeline step
      */
     content?: string;
     /**
      * Thinking Summary
      *
-     * Summary of reasoning/thinking for this segment
+     * Summary of reasoning/thinking for this step
      */
     thinking_summary?: string | null;
     /**
-     * Type of content in this output (text, tool_call, status)
+     * Legacy delta type if returned by older Interactions revisions
      */
-    delta_type?: GeminiDeltaType;
+    delta_type?: GeminiDeltaType | null;
     [key: string]: unknown;
 };
 
@@ -405,9 +429,15 @@ export type GeminiOutput = {
  * THINKING_UPDATE: Progress update on reasoning/thinking process.
  * RESEARCH_UPDATE: Progress update on research gathering.
  * FINAL_RESULT: Final result payload with complete response.
+ * INTERACTION_START: Native Interactions API stream start event.
+ * INTERACTION_COMPLETE: Native Interactions API stream completion event.
+ * INTERACTION_STATUS_UPDATE: Native Interactions API status update event.
+ * CONTENT_START: Native Interactions API content start event.
+ * CONTENT_DELTA: Native Interactions API content delta event.
+ * CONTENT_STOP: Native Interactions API content stop event.
  * ERROR: Error event indicating job failure.
  */
-export type GeminiStreamEventType = 'thinking_update' | 'research_update' | 'final_result' | 'error';
+export type GeminiStreamEventType = 'thinking_update' | 'research_update' | 'final_result' | 'interaction.start' | 'interaction.complete' | 'interaction.status_update' | 'content.start' | 'content.delta' | 'content.stop' | 'error';
 
 /**
  * GeminiUsage

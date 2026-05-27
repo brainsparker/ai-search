@@ -48,25 +48,25 @@ export function mapPerplexityResultToItem(
 
 /**
  * Maps a Gemini deep research response to ItemCreate format.
- * Combines all output segments into content and stores thinking_summary,
- * usage, and grounding_metadata in item_metadata.
+ * Combines timeline step content into the saved item and stores thinking
+ * summaries, usage, and step metadata in item_metadata.
  */
 export function mapGeminiResultToItem(
   response: GeminiDeepResearchResultResponse,
   query: string,
   interactionId: string,
 ): ItemCreate {
-  // Combine all output content segments
-  const outputs = response.outputs || []
-  const combinedContent = outputs
-    .filter((output) => output.content)
-    .map((output) => sanitizeString(output.content || ""))
+  // Combine all timeline step content segments
+  const steps = response.steps || []
+  const combinedContent = steps
+    .filter((step) => step.content)
+    .map((step) => sanitizeString(step.content || ""))
     .join("\n\n")
 
   // Extract thinking summaries if available
-  const thinkingSummaries = outputs
-    .filter((output) => output.thinking_summary)
-    .map((output) => sanitizeString(output.thinking_summary || ""))
+  const thinkingSummaries = steps
+    .filter((step) => step.thinking_summary)
+    .map((step) => sanitizeString(step.thinking_summary || ""))
 
   const content = combinedContent || "No content available"
 
@@ -81,7 +81,7 @@ export function mapGeminiResultToItem(
       interaction_id: interactionId,
       status: response.status,
       thinking_summaries: thinkingSummaries,
-      outputs_count: outputs.length,
+      steps_count: steps.length,
       usage: response.usage || null,
       completed_at: response.completed_at || null,
       event_type: response.event_type || null,

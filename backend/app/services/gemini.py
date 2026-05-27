@@ -56,6 +56,10 @@ class GeminiService:
     """
 
     BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta"
+    API_REVISION: str = "2026-05-20"
+    THINKING_STEP_TYPES: frozenset[str] = frozenset(
+        {"thought", "thinking", "reasoning", "thinking_update"}
+    )
 
     def __init__(self) -> None:
         """Initialize GeminiService with configuration from settings.
@@ -93,6 +97,7 @@ class GeminiService:
         return {
             "x-goog-api-key": self._api_key,
             "Content-Type": "application/json",
+            "Api-Revision": self.API_REVISION,
         }
 
     def _handle_error(
@@ -185,6 +190,173 @@ class GeminiService:
             "reason": str(reason or ""),
         }
 
+    def _extract_text_from_content(
+        self,
+        value: Any,
+        *,
+        include_thinking: bool = False,
+    ) -> str:
+        """Extract readable text from Gemini content blocks.
+
+        Gemini Interactions content can be returned as strings, content block
+        dictionaries (for example `{type: "text", text: "..."}`), or nested
+        lists of blocks. The 2026-05-20 `steps` schema can also put model text
+        inside nested step fields such as `content`, `parts`, `output`,
+        `message`, `response`, or `delta`.
+        """
+        if value is None:
+            return ""
+
+        if isinstance(value, str):
+            return value
+
+        if isinstance(value, list):
+            parts = [
+                self._extract_text_from_content(
+                    item,
+                    include_thinking=include_thinking,
+                )
+                for item in value
+            ]
+            return "\n\n".join(part for part in parts if part)
+
+        if not isinstance(value, dict):
+            return ""
+
+        content_type = value.get("type")
+        if (
+            not include_thinking
+            and isinstance(content_type, str)
+            and content_type.lower() in self.THINKING_STEP_TYPES
+        ):
+            return ""
+
+        text = value.get("text")
+        if isinstance(text, str):
+            return text
+
+        nested_keys = [
+            "content",
+            "parts",
+            "output",
+            "outputs",
+            "message",
+            "response",
+            "delta",
+        ]
+        if include_thinking:
+            nested_keys.append("summary")
+
+        for key in nested_keys:
+            if key not in value:
+                continue
+            extracted = self._extract_text_from_content(
+                value.get(key),
+                include_thinking=include_thinking,
+            )
+            if extracted:
+                return extracted
+
+        return ""
+
+    def _step_type(self, step: dict[str, Any]) -> str | None:
+        """Return a normalized step type from either canonical or raw fields."""
+        step_type = step.get("step_type") or step.get("type")
+        if isinstance(step_type, str) and step_type:
+            return step_type
+        return None
+
+    def _is_thinking_step(self, step: dict[str, Any]) -> bool:
+        """Check whether a timeline step represents reasoning/thinking only."""
+        step_type = self._step_type(step)
+        return step_type is not None and step_type.lower() in self.THINKING_STEP_TYPES
+
+    def _extract_step_content(self, step: dict[str, Any]) -> str:
+        """Extract user-visible report content from a normalized step."""
+        if self._is_thinking_step(step):
+            return ""
+
+        return self._extract_text_from_content(step, include_thinking=False)
+
+    def _extract_thinking_summary(self, step: dict[str, Any]) -> str | None:
+        """Extract a thinking summary from legacy or 2026-05-20 step fields."""
+        for key in ("thinking_summary", "thinkingSummary"):
+            summary = self._extract_text_from_content(
+                step.get(key),
+                include_thinking=True,
+            )
+            if summary:
+                return summary
+
+        if self._is_thinking_step(step):
+            for key in ("summary", "content", "parts", "text"):
+                summary = self._extract_text_from_content(
+                    step.get(key),
+                    include_thinking=True,
+                )
+                if summary:
+                    return summary
+
+        summary = self._extract_text_from_content(
+            step.get("summary"),
+            include_thinking=True,
+        )
+        return summary or None
+
+    def _normalize_step(self, step: Any) -> dict[str, Any]:
+        """Normalize one Gemini `steps` timeline entry for app rendering."""
+        if isinstance(step, dict):
+            normalized = dict(step)
+        else:
+            return {"content": self._extract_text_from_content(step)}
+
+        step_type = self._step_type(normalized)
+        if step_type and not normalized.get("step_type"):
+            normalized["step_type"] = step_type
+
+        thinking_summary = self._extract_thinking_summary(normalized)
+
+        content = self._extract_step_content(normalized)
+        existing_content = normalized.get("content")
+        if content and (not existing_content or not isinstance(existing_content, str)):
+            normalized["content"] = content
+        elif not isinstance(existing_content, str):
+            normalized["content"] = ""
+        elif not content and self._is_thinking_step(normalized):
+            normalized["content"] = ""
+
+        if thinking_summary and not normalized.get("thinking_summary"):
+            normalized["thinking_summary"] = thinking_summary
+
+        return normalized
+
+    def _normalize_poll_response(
+        self,
+        response_data: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Normalize Gemini poll responses to the 2026-05-20 `steps` schema.
+
+        `Api-Revision: 2026-05-20` returns `steps`. During rollout, this keeps
+        a defensive legacy `outputs` fallback so stored/replayed old responses
+        and tests still parse into the new internal shape.
+        """
+        normalized = dict(response_data)
+
+        raw_steps = normalized.get("steps")
+        if not isinstance(raw_steps, list):
+            legacy_outputs = normalized.get("outputs")
+            raw_steps = legacy_outputs if isinstance(legacy_outputs, list) else []
+
+        normalized["steps"] = [self._normalize_step(step) for step in raw_steps]
+
+        error = normalized.get("error")
+        if isinstance(error, dict) and not normalized.get("error_message"):
+            message = error.get("message")
+            if message:
+                normalized["error_message"] = str(message)
+
+        return normalized
+
     def _build_payload(
         self,
         request: GeminiDeepResearchRequest,
@@ -259,8 +431,9 @@ class GeminiService:
     ) -> GeminiDeepResearchResultResponse:
         """Parse API response into poll result response schema.
 
-        Validates the response from the interactions GET endpoint
-        against the result response schema.
+        Normalizes the 2026-05-20 `steps` timeline response from the
+        interactions GET endpoint and validates it against the result response
+        schema.
 
         Args:
             response_data: Raw response dictionary from the API.
@@ -272,7 +445,8 @@ class GeminiService:
             GeminiAPIError: If response format is unexpected.
         """
         try:
-            return GeminiDeepResearchResultResponse.model_validate(response_data)
+            normalized_data = self._normalize_poll_response(response_data)
+            return GeminiDeepResearchResultResponse.model_validate(normalized_data)
         except Exception as exc:
             raise GeminiAPIError.api_error(
                 message="Failed to parse Gemini poll response.",
@@ -287,8 +461,9 @@ class GeminiService:
     def _is_terminal_status(self, status: GeminiInteractionStatus) -> bool:
         """Check if the interaction status is terminal.
 
-        Terminal statuses indicate the job has finished processing
-        and no further polling is needed.
+        Terminal statuses indicate the job has finished processing,
+        failed, was cancelled, or stopped incomplete, so no further polling is
+        needed.
 
         Args:
             status: The current interaction status.
@@ -300,6 +475,7 @@ class GeminiService:
             GeminiInteractionStatus.COMPLETED,
             GeminiInteractionStatus.FAILED,
             GeminiInteractionStatus.CANCELLED,
+            GeminiInteractionStatus.INCOMPLETE,
         )
 
     async def start_research(
@@ -371,7 +547,7 @@ class GeminiService:
         """Poll for deep research job status and results.
 
         Makes a GET request to retrieve the current status and any available
-        outputs from a running research job. The last_event_id parameter
+        timeline steps from a running research job. The last_event_id parameter
         enables reconnection after network interruption.
 
         Args:
@@ -379,7 +555,7 @@ class GeminiService:
             last_event_id: Optional ID of last received event for reconnection.
 
         Returns:
-            GeminiDeepResearchResultResponse with current status and outputs.
+            GeminiDeepResearchResultResponse with current status and steps.
 
         Raises:
             GeminiAPIError: If the API request fails for any reason.
@@ -481,6 +657,13 @@ class GeminiService:
                 if result.status == GeminiInteractionStatus.CANCELLED:
                     raise GeminiAPIError.api_error(
                         message="Deep research job was cancelled.",
+                        details={"interaction_id": interaction_id},
+                    )
+
+                # Handle incomplete status from the 2026-05-20 Interactions API
+                if result.status == GeminiInteractionStatus.INCOMPLETE:
+                    raise GeminiAPIError.api_error(
+                        message="Deep research job stopped before completion.",
                         details={"interaction_id": interaction_id},
                     )
 

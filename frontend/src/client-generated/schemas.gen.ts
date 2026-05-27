@@ -389,13 +389,13 @@ export const GeminiDeepResearchResultResponseSchema = {
             $ref: '#/components/schemas/GeminiInteractionStatus',
             description: 'Current status of the research job'
         },
-        outputs: {
+        steps: {
             items: {
-                $ref: '#/components/schemas/GeminiOutput'
+                $ref: '#/components/schemas/GeminiStep'
             },
             type: 'array',
-            title: 'Outputs',
-            description: 'List of output segments from the research'
+            title: 'Steps',
+            description: 'Chronological timeline steps from the research interaction'
         },
         usage: {
             anyOf: [
@@ -419,7 +419,7 @@ export const GeminiDeepResearchResultResponseSchema = {
                 }
             ],
             title: 'Completed At',
-            description: 'Timestamp when the job completed (if applicable)'
+            description: 'Timestamp when the job completed or was last updated'
         },
         event_id: {
             anyOf: [
@@ -463,7 +463,7 @@ export const GeminiDeepResearchResultResponseSchema = {
         'status'
     ],
     title: 'GeminiDeepResearchResultResponse',
-    description: 'Response schema for Gemini deep research polling results.\n\nContains the current status and any available results from polling.\nWhen status is COMPLETED, outputs and usage will be populated.'
+    description: 'Response schema for Gemini deep research polling results.\n\nContains the current status and any available timeline steps from polling.\nWhen status is COMPLETED, steps and usage will be populated.'
 } as const;
 
 export const GeminiDeltaTypeSchema = {
@@ -483,19 +483,57 @@ export const GeminiInteractionStatusSchema = {
         'pending',
         'in_progress',
         'completed',
+        'requires_action',
         'failed',
-        'cancelled'
+        'cancelled',
+        'incomplete'
     ],
     title: 'GeminiInteractionStatus',
-    description: 'Status states for Gemini deep research interactions.\n\nRepresents the lifecycle states of an async deep research job from\nsubmission through completion or failure.\n\nAttributes:\n    PENDING: Job submitted but not yet started processing.\n    IN_PROGRESS: Job is actively being processed.\n    COMPLETED: Job finished successfully with results available.\n    FAILED: Job encountered an error and could not complete.\n    CANCELLED: Job was cancelled before completion.'
+    description: 'Status states for Gemini deep research interactions.\n\nRepresents the lifecycle states of an async deep research job from\nsubmission through completion or failure.\n\nAttributes:\n    PENDING: Job submitted but not yet started processing.\n    IN_PROGRESS: Job is actively being processed.\n    COMPLETED: Job finished successfully with results available.\n    REQUIRES_ACTION: Job is waiting for an external action/tool result.\n    FAILED: Job encountered an error and could not complete.\n    CANCELLED: Job was cancelled before completion.\n    INCOMPLETE: Job stopped before producing a complete result.'
 } as const;
 
-export const GeminiOutputSchema = {
+export const GeminiStepSchema = {
     properties: {
+        step_id: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Step Id',
+            description: 'Unique identifier for this timeline step, if provided'
+        },
+        step_type: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Step Type',
+            description: 'Type of timeline step, such as message, thought, or tool call'
+        },
+        status: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Status',
+            description: 'Step-level status, if provided by Gemini'
+        },
         content: {
             type: 'string',
             title: 'Content',
-            description: 'Text content of this output segment',
+            description: 'Text content extracted from this timeline step',
             default: ''
         },
         thinking_summary: {
@@ -508,18 +546,24 @@ export const GeminiOutputSchema = {
                 }
             ],
             title: 'Thinking Summary',
-            description: 'Summary of reasoning/thinking for this segment'
+            description: 'Summary of reasoning/thinking for this step'
         },
         delta_type: {
-            $ref: '#/components/schemas/GeminiDeltaType',
-            description: 'Type of content in this output (text, tool_call, status)',
-            default: 'text'
+            anyOf: [
+                {
+                    $ref: '#/components/schemas/GeminiDeltaType'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            description: 'Legacy delta type if returned by older Interactions revisions'
         }
     },
     additionalProperties: true,
     type: 'object',
-    title: 'GeminiOutput',
-    description: 'Individual output segment from Gemini deep research response.\n\nRepresents a content segment which may include text, thinking summaries,\nor tool call results.'
+    title: 'GeminiStep',
+    description: 'Timeline step from Gemini deep research responses.\n\nThe Interactions API revision 2026-05-20 returns a chronological `steps`\ntimeline instead of the legacy flat `outputs` array. Each step may be a\nmodel message, thinking summary, tool call, tool result, or status update.\nThe backend normalizes nested Gemini content blocks into `content` and\n`thinking_summary` so the frontend can render a stable shape while still\npreserving unknown step fields via `extra="allow"`.'
 } as const;
 
 export const GeminiStreamEventTypeSchema = {
@@ -528,10 +572,16 @@ export const GeminiStreamEventTypeSchema = {
         'thinking_update',
         'research_update',
         'final_result',
+        'interaction.start',
+        'interaction.complete',
+        'interaction.status_update',
+        'content.start',
+        'content.delta',
+        'content.stop',
         'error'
     ],
     title: 'GeminiStreamEventType',
-    description: 'Event types for Gemini streaming responses during polling.\n\nIdentifies the type of event received when polling for job progress,\nenabling clients to handle different event types appropriately.\n\nAttributes:\n    THINKING_UPDATE: Progress update on reasoning/thinking process.\n    RESEARCH_UPDATE: Progress update on research gathering.\n    FINAL_RESULT: Final result payload with complete response.\n    ERROR: Error event indicating job failure.'
+    description: 'Event types for Gemini streaming responses during polling.\n\nIdentifies the type of event received when polling for job progress,\nenabling clients to handle different event types appropriately.\n\nAttributes:\n    THINKING_UPDATE: Progress update on reasoning/thinking process.\n    RESEARCH_UPDATE: Progress update on research gathering.\n    FINAL_RESULT: Final result payload with complete response.\n    INTERACTION_START: Native Interactions API stream start event.\n    INTERACTION_COMPLETE: Native Interactions API stream completion event.\n    INTERACTION_STATUS_UPDATE: Native Interactions API status update event.\n    CONTENT_START: Native Interactions API content start event.\n    CONTENT_DELTA: Native Interactions API content delta event.\n    CONTENT_STOP: Native Interactions API content stop event.\n    ERROR: Error event indicating job failure.'
 } as const;
 
 export const GeminiUsageSchema = {

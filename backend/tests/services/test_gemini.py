@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Generator
 from typing import Any
 
 import pytest
@@ -54,9 +55,27 @@ class MockAsyncClient:
             raise AssertionError("Mock response must be provided")
         return self.response
 
+    async def get(
+        self,
+        url: str,
+        headers: dict[str, str],
+        params: dict[str, str] | None = None,
+    ) -> MockResponse:
+        self.request = {
+            "method": "GET",
+            "url": url,
+            "headers": headers,
+            "params": params,
+        }
+        if self.exception is not None:
+            raise self.exception
+        if self.response is None:
+            raise AssertionError("Mock response must be provided")
+        return self.response
+
 
 @pytest.fixture
-def configured_gemini() -> GeminiService:
+def configured_gemini() -> Generator[GeminiService, None, None]:
     original_api_key = settings.gemini.api_key
     original_timeout = settings.gemini.timeout
     original_poll_interval = settings.gemini.poll_interval
@@ -95,6 +114,7 @@ def test_service_builds_headers_and_payload(
     assert configured_gemini._build_headers() == {
         "x-goog-api-key": "test-gemini-key",
         "Content-Type": "application/json",
+        "Api-Revision": "2026-05-20",
     }
     assert configured_gemini._build_payload(request) == {
         "input": "Find recent AI coding benchmarks",
@@ -154,6 +174,7 @@ def test_service_start_research_success(
         "headers": {
             "x-goog-api-key": "test-gemini-key",
             "Content-Type": "application/json",
+            "Api-Revision": "2026-05-20",
         },
         "json": {
             "input": "State of browser agents",
@@ -171,6 +192,125 @@ def test_service_start_research_success(
                 }
             ],
         },
+    }
+
+
+def test_service_poll_research_parses_steps_schema(
+    configured_gemini: GeminiService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mock_client = MockAsyncClient(
+        response=MockResponse(
+            status_code=200,
+            json_data={
+                "id": "interaction-123",
+                "status": "completed",
+                "updated": "2026-05-20T18:05:00Z",
+                "steps": [
+                    {
+                        "id": "step-1",
+                        "type": "thought",
+                        "summary": [{"type": "text", "text": "Reviewed source set."}],
+                    },
+                    {
+                        "id": "step-2",
+                        "type": "message",
+                        "content": [
+                            {"type": "text", "text": "# Research report\n\nFindings."}
+                        ],
+                    },
+                    {
+                        "id": "step-3",
+                        "type": "tool_call",
+                        "content": {"name": "search", "arguments": {"q": "benchmarks"}},
+                    },
+                ],
+                "usage": {
+                    "inputTokens": 10,
+                    "outputTokens": 20,
+                    "totalTokens": 30,
+                },
+            },
+        )
+    )
+
+    monkeypatch.setattr(
+        "app.services.gemini.httpx.AsyncClient",
+        lambda *args, **kwargs: mock_client,
+    )
+
+    response = asyncio.run(
+        configured_gemini.poll_research(
+            "interaction-123",
+            last_event_id="event-9",
+        )
+    )
+
+    assert response.status == "completed"
+    assert response.completed_at is not None
+    assert len(response.steps) == 3
+    assert response.steps[0].step_id == "step-1"
+    assert response.steps[0].step_type == "thought"
+    assert response.steps[0].content == ""
+    assert response.steps[0].thinking_summary == "Reviewed source set."
+    assert response.steps[1].content == "# Research report\n\nFindings."
+    assert response.steps[2].step_id == "step-3"
+    assert response.steps[2].content == ""
+    assert response.usage is not None
+    assert response.usage.input_tokens == 10
+    assert response.usage.output_tokens == 20
+    assert response.usage.total_tokens == 30
+    assert mock_client.request == {
+        "method": "GET",
+        "url": "https://generativelanguage.googleapis.com/v1beta/interactions/interaction-123",
+        "headers": {
+            "x-goog-api-key": "test-gemini-key",
+            "Content-Type": "application/json",
+            "Api-Revision": "2026-05-20",
+        },
+        "params": {"last_event_id": "event-9"},
+    }
+
+
+def test_service_poll_research_normalizes_legacy_outputs_to_steps(
+    configured_gemini: GeminiService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mock_client = MockAsyncClient(
+        response=MockResponse(
+            status_code=200,
+            json_data={
+                "id": "interaction-legacy",
+                "status": "completed",
+                "outputs": [
+                    {"text": "Legacy report text."},
+                    {"type": "thought", "summary": "Legacy thinking summary."},
+                ],
+            },
+        )
+    )
+
+    monkeypatch.setattr(
+        "app.services.gemini.httpx.AsyncClient",
+        lambda *args, **kwargs: mock_client,
+    )
+
+    response = asyncio.run(configured_gemini.poll_research("interaction-legacy"))
+
+    assert response.status == "completed"
+    assert len(response.steps) == 2
+    assert response.steps[0].content == "Legacy report text."
+    assert response.steps[1].content == ""
+    assert response.steps[1].thinking_summary == "Legacy thinking summary."
+    assert mock_client.request == {
+        "method": "GET",
+        "url": "https://generativelanguage.googleapis.com/v1beta/interactions/interaction-legacy",
+        "headers": {
+            "x-goog-api-key": "test-gemini-key",
+            "Content-Type": "application/json",
+            "Api-Revision": "2026-05-20",
+        },
+        "params": None,
     }
 
 
@@ -219,6 +359,7 @@ def test_service_cancel_research_posts_cancel_endpoint(
         "headers": {
             "x-goog-api-key": "test-gemini-key",
             "Content-Type": "application/json",
+            "Api-Revision": "2026-05-20",
         },
         "json": None,
     }

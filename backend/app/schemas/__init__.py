@@ -15,7 +15,7 @@ from app.schemas.gemini import (
     GeminiDeltaType,
     GeminiInteractionStatus,
     # Nested Models
-    GeminiOutput,
+    GeminiStep,
     GeminiStreamEventType,
     GeminiUsage,
 )
@@ -104,7 +104,7 @@ __all__ = [
     "GeminiDeltaType",
     # Gemini Nested Models
     "GeminiUsage",
-    "GeminiOutput",
+    "GeminiStep",
     # Gemini Request Schemas
     "GeminiDeepResearchRequest",
     "GeminiDeepResearchPollRequest",

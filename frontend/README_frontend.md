@@ -44,7 +44,7 @@ The frontend is built with [Vite](https://vitejs.dev/), [React](https://reactjs.
 ### Gemini (`src/components/Gemini/`)
 
 - **GeminiDeepResearchForm** - Research query with options
-- **GeminiResultView** - Markdown report with outputs
+- **GeminiResultView** - Markdown report from Gemini timeline steps
 - **GeminiProgressIndicator** - Polling status and elapsed time
 - **GeminiCancelButton** - Cancel in-progress research
 - **GeminiUsageStats** - Token usage display
