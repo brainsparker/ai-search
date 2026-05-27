@@ -3,6 +3,7 @@ name: Test Backend
 on:
   push:
     branches:
+      - main
       - master
   pull_request:
     types:
@@ -18,21 +19,29 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.10"
+          python-version: "3.11"
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
-          version: "0.4.15"
+          version: "0.9.4"
           enable-cache: true
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          cp backend/.env.example backend/.env
+      - name: Install dependencies
+        run: uv sync --locked --group dev
+        working-directory: backend
       - run: docker compose down -v --remove-orphans
       - run: docker compose up -d db mailcatcher
       - name: Migrate DB
-        run: uv run bash scripts/prestart.sh
+        run: uv run --no-sync bash scripts/prestart.sh
         working-directory: backend
       - name: Run tests
-        run: uv run bash scripts/tests-start.sh "Coverage for ${{ github.sha }}"
+        run: uv run --no-sync bash scripts/tests-start.sh "Coverage for ${{ github.sha }}"
         working-directory: backend
       - run: docker compose down -v --remove-orphans
+        if: always()
       - name: Store coverage files
         uses: actions/upload-artifact@v7
         with:
@@ -40,5 +49,5 @@ jobs:
           path: backend/htmlcov
           include-hidden-files: true
       - name: Coverage report
-        run: uv run coverage report --fail-under=90
+        run: uv run --no-sync coverage report --fail-under=90
         working-directory: backend

@@ -84,7 +84,9 @@ class YouComService:
         payload = self._build_payload(request)
 
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(self._timeout)) as client:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(self._timeout)
+            ) as client:
                 response = await client.post(
                     self.BASE_URL,
                     headers=headers,

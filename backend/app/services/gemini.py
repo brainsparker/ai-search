@@ -115,11 +115,15 @@ class GeminiService:
 
         parsed_error = self._extract_error_details(response_body)
 
-        if status_code == 400 and parsed_error and (
-            parsed_error.get("reason") == "API_KEY_INVALID"
-            or parsed_error.get("status") == "API_KEY_INVALID"
-            or "api key expired" in parsed_error.get("message", "").lower()
-            or "api key invalid" in parsed_error.get("message", "").lower()
+        if (
+            status_code == 400
+            and parsed_error
+            and (
+                parsed_error.get("reason") == "API_KEY_INVALID"
+                or parsed_error.get("status") == "API_KEY_INVALID"
+                or "api key expired" in parsed_error.get("message", "").lower()
+                or "api key invalid" in parsed_error.get("message", "").lower()
+            )
         ):
             return GeminiAPIError.invalid_api_key(
                 message=parsed_error.get("message")
@@ -274,7 +278,9 @@ class GeminiService:
                 message="Failed to parse Gemini poll response.",
                 details={
                     "original_error": str(exc),
-                    "response_keys": list(response_data.keys()) if response_data else [],
+                    "response_keys": list(response_data.keys())
+                    if response_data
+                    else [],
                 },
             ) from exc
 

@@ -25,18 +25,22 @@ jobs:
         node-version: lts/*
     - uses: actions/setup-python@v6
       with:
-        python-version: "3.10"
+        python-version: "3.11"
     - name: Install uv
       uses: astral-sh/setup-uv@v7
       with:
-        version: "0.4.15"
+        version: "0.9.4"
         enable-cache: true
+    - name: Prepare environment
+      run: |
+        cp .env.example .env
+        cp backend/.env.example backend/.env
     - name: Install dependencies
       run: npm ci
       working-directory: frontend
-    - run: uv sync
+    - run: uv sync --locked
       working-directory: backend
-    - run: uv run bash scripts/generate-client.sh
+    - run: uv run --no-sync bash scripts/generate-client.sh
       env:
         VIRTUAL_ENV: backend/.venv
         SECRET_KEY: just-for-generating-client
@@ -46,7 +50,7 @@ jobs:
       run: |
         git config --local user.email "github-actions@github.com"
         git config --local user.name "github-actions"
-        git add frontend/src/client
+        git add frontend/src/client frontend/src/client-generated
     # Same repo PRs
     - name: Push changes
       if: ( github.event_name != 'pull_request' || github.secret_source == 'Actions' )
