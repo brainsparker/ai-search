@@ -14,12 +14,14 @@ jobs:
     steps:
     # For PRs from forks
     - uses: actions/checkout@v6
+      with:
+        token: ${{ github.token }}
     # For PRs from the same repo
     - uses: actions/checkout@v6
       if: ( github.event_name != 'pull_request' || github.secret_source == 'Actions' )
       with:
         ref: ${{ github.head_ref }}
-        token: ${{ secrets.FULL_STACK_FASTAPI_TEMPLATE_REPO_TOKEN }}
+        token: ${{ github.token }}
     - uses: actions/setup-node@v6
       with:
         node-version: lts/*
