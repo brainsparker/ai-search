@@ -21,7 +21,7 @@ dependencies = [
     "pydantic-settings<3.0.0,>=2.2.1",
     "sentry-sdk[fastapi]>=2.60.0,<3.0.0",
     "pyjwt<3.0.0,>=2.8.0",
-    "tavily-python>=0.7.24",
+    "tavily-python>=0.7.25",
 ]
 
 [dependency-groups]
