@@ -223,6 +223,8 @@ class YouComSettings(BaseSettings):
         env_ignore_empty=True,
         extra="ignore",
         env_prefix="YOUCOM_",
+        # Accept the existing Python field name as well as environment aliases.
+        populate_by_name=True,
     )
 
     api_key: str | None = Field(
